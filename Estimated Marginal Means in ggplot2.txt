@@ -1,0 +1,85 @@
+############################# Estimated Marginal Means in ggplot2
+####### Based on a linear mixed model
+### set up random dataframe
+ID<-c(seq(1:25))
+Group<-c(rep("Group 01",14),rep("Group 02",11))
+Time01<-c(6,8,7,6,6,6,6,6,6,6,7,6,8,7,6,4,6,6,7,5,6,8,5,6,7)
+Time02<-c(6,6,9,7,7,6,11,11,9,4,8,6,8,11,10,6,11,7,11,7,7,11,7,8,8)
+Time03<-c(6,10,12,9,11,6,11,15,6,8,11,9,9,9,11,8,11,6,12,13,7,16,7,16,10)
+Time04<-c(2,4,14,3,8,6,5,10,3,2,6,1,10,10,9,7,14,6,9,12,7,16,7,16,8)
+df<-data.frame(ID,Group,Time01,Time02,Time03,Time04)
+
+### convert to Long
+library(tidyr)
+DF<-gather(df,Time,Measure,3:6)
+
+DF$Time[DF$Time=="Time01"]<-"Time 01"
+DF$Time[DF$Time=="Time02"]<-"Time 02"
+DF$Time[DF$Time=="Time03"]<-"Time 03"
+DF$Time[DF$Time=="Time04"]<-"Time 04"
+
+### set properties
+DF$Group<-as.factor(DF$Group)
+DF$Time<-as.factor(DF$Time)
+
+### plot
+library(ggplot2)
+(g1<-ggplot(DF,aes(x=Time,y=Measure,fill=Group))+stat_boxplot(geom="errorbar")+
+  geom_boxplot(lwd=0.5,outlier.color = "darkorange4",outlier.size = 4,outlier.shape =  23)+theme_bw())
+windows(20,10)
+(g2<-g1+labs(x="",y="Measurement (units)")+coord_cartesian(ylim=c(0,18))+
+    scale_y_continuous(breaks=seq(0,18,2))+
+    theme(text = element_text(size=15),legend.title = element_blank(),legend.position="bottom")+
+    scale_fill_manual(values = c("cyan","blueviolet")))
+
+### linear mixed model
+library(lmerTest)
+result1 <- lmer(Measure ~ Group*Time + (1|ID), data=DF,REML=T)
+anova(result1)
+
+### Simple Main effect (interaction effect)
+library(emmeans)
+emmeans(result1, ~Group|Time) %>% pairs(adjust="Tukey",side = "=") # side not required if two-tailed
+
+### Estimated marginal means
+### Simple Main Effect Plots
+## Option 01
+# https://cran.r-project.org/web/packages/emmeans/vignettes/interactions.html
+(g3<-emmip(result1, ~Group|Time,CIs = TRUE,linearg = list(linetype = "dashed"), 
+           CIarg = list(lwd = 1, alpha = 1))+theme_bw())
+windows(20,10)
+(g4<-g3+labs(x = "", y = "95% CI of Estimated Marginal Means Measurement (units)")+
+  coord_cartesian(ylim=c(4,13))+scale_y_continuous(breaks=seq(4,13,1))+
+  theme(text = element_text(size=15)))
+
+## Option 02
+emm1<-emmeans(result1, ~Group|Time)
+(emm1<-as.data.frame(emm1))
+
+windows(20,10)
+(g5<- ggplot(emm1, aes(x=Time, y=emmean, group=Group, color=Group)) + theme_bw()+
+    geom_line(size=1.25,position=position_dodge(0.2)) +
+    geom_point(size=2,position=position_dodge(0.2))+
+    geom_errorbar(aes(ymin=lower.CL, ymax=upper.CL), width=0.2, size=1.25,
+                  position=position_dodge(0.2)))
+
+windows(20,10)
+(g6<-g5+labs(x="", y = "95% CI of Estimated Marginal Means Measurement (units)",color="Group")+
+    coord_cartesian(ylim=c(4,13))+scale_y_continuous(breaks=seq(4,13,1))+
+    theme(text = element_text(size=15),legend.title = element_blank(),legend.position="bottom")+
+    scale_color_manual(values = c("cyan","blueviolet")))
+
+library(gridExtra)
+windows(20,10)
+grid.arrange(g2,g6,ncol=2)
+
+
+####### Based on an ANOVA, i.e., Time and Group as between-subjects factors
+result2<-aov(Measure~Time*Group,DF)
+summary(result2)
+
+### Simple Main effect (interaction effect)
+emmeans(result2, ~Group|Time) %>% pairs(adjust="Tukey",side = "=")
+
+### Estimated marginal means
+(emm2<-data.frame(emmeans(result2, ~Group|Time)))
